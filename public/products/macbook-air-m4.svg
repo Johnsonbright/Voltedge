@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e17"/>
+      <stop offset="100%" stop-color="#141c2e"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F0FF"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#00F0FF" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  <rect width="600" height="450" fill="url(#bg)" rx="16"/>
+  <circle cx="300" cy="225" r="160" fill="url(#glow)"/>
+  
+  <!-- MacBook Display -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="80" width="320" height="210" rx="14" fill="#0f172a" stroke="#475569" stroke-width="3"/>
+    <rect x="150" y="90" width="300" height="190" rx="8" fill="url(#screen)"/>
+    <!-- Notch -->
+    <path d="M 282 90 L 318 90 A 4 4 0 0 1 314 97 L 286 97 A 4 4 0 0 1 282 90 Z" fill="#0f172a"/>
+    <circle cx="300" cy="94" r="1.5" fill="#10B981"/>
+    
+    <!-- Keyboard Base -->
+    <path d="M 90 290 L 510 290 L 480 325 L 120 325 Z" fill="url(#body)" stroke="#475569" stroke-width="2"/>
+    <!-- Trackpad cutout -->
+    <rect x="250" y="295" width="100" height="15" rx="3" fill="#0f172a" opacity="0.6"/>
+    <!-- Base lip -->
+    <path d="M 120 325 L 480 325 L 476 332 L 124 332 Z" fill="#0f172a"/>
+  </g>
+
+  <!-- Spec Tag -->
+  <rect x="220" y="370" width="160" height="32" rx="16" fill="#1e293b" stroke="#00F0FF" stroke-width="1"/>
+  <text x="300" y="391" fill="#00F0FF" font-family="system-ui, sans-serif" font-weight="700" font-size="13" text-anchor="middle">APPLE M4 SILICON</text>
+</svg>
