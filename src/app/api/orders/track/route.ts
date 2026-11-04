@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findOrderForTracking } from '@/lib/orderSimulator';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -36,7 +33,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Return sanitized order data (hide internal raw payload if sensitive)
+    // Return sanitized order data
     const sanitizedOrder = {
       id: order.id,
       order_ref: order.order_ref,

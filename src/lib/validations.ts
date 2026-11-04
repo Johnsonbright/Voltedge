@@ -3,7 +3,7 @@ import { isValidNigerianPhone } from './formatters';
 
 // Nigerian phone schema
 export const nigerianPhoneSchema = z
-  .string({ required_error: 'Phone number is required' })
+  .string()
   .trim()
   .min(10, 'Phone number must be at least 10 digits')
   .max(16, 'Phone number cannot exceed 16 characters')
@@ -15,12 +15,12 @@ export const nigerianPhoneSchema = z
 // Customer details schema
 export const orderCustomerSchema = z.object({
   name: z
-    .string({ required_error: 'Full name is required' })
+    .string()
     .trim()
     .min(2, 'Name must be at least 2 characters')
     .max(100, 'Name cannot exceed 100 characters'),
   email: z
-    .string({ required_error: 'Email address is required' })
+    .string()
     .trim()
     .email('Please enter a valid email address'),
   phone: nigerianPhoneSchema,
@@ -47,18 +47,18 @@ export const orderItemSubmissionSchema = z.object({
   product_id: z.string().min(1, 'Product ID is required'),
   name: z.string().min(1, 'Product name is required'),
   quantity: z
-    .number({ required_error: 'Quantity is required' })
+    .number()
     .int('Quantity must be an integer')
     .positive('Quantity must be at least 1'),
   unit_price_displayed: z
-    .number({ required_error: 'Displayed price is required' })
+    .number()
     .nonnegative('Displayed price cannot be negative'),
 });
 
 // Complete order submission payload schema
 export const orderSubmissionPayloadSchema = z.object({
   idempotency_key: z
-    .string({ required_error: 'Idempotency key is required' })
+    .string()
     .uuid('Idempotency key must be a valid UUID'),
   submitted_at: z.string().datetime({ message: 'Must be a valid ISO 8601 datetime' }),
   source: z.string().default('storefront-web'),

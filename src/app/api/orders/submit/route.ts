@@ -4,9 +4,6 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import { processOrderLocally } from '@/lib/orderSimulator';
 import { WebhookResponse } from '@/types';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 export async function POST(req: NextRequest) {
   // 1. Rate Limiting Check (by client IP)
   const forwarded = req.headers.get('x-forwarded-for');

@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import { Zap, ShieldCheck, HelpCircle } from 'lucide-react';
@@ -71,7 +73,7 @@ export default function Footer() {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
-          <p>© {new Date().getFullYear()} VoltEdge Electronics Ltd. All rights reserved.</p>
+          <p>© 2026 VoltEdge Electronics Ltd. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
