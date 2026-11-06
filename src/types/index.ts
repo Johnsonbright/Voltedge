@@ -26,6 +26,9 @@ export type WebhookOutcome =
   | 'DUPLICATE';
 
 export type OrderStatus =
+  | 'PAYMENT_PENDING'
+  | 'PAYMENT_CONFIRMED'
+  | 'REVIEW_REQUIRED'
   | 'PENDING'
   | 'UNDER_REVIEW'
   | 'CONFIRMED'
@@ -33,6 +36,8 @@ export type OrderStatus =
   | 'REJECTED';
 
 export type PaymentStatus =
+  | 'PAYMENT_PENDING'
+  | 'PAYMENT_CONFIRMED'
   | 'UNPAID'
   | 'PENDING_VERIFICATION'
   | 'VERIFIED'
@@ -60,12 +65,15 @@ export interface OrderItemSubmission {
   name: string;
   quantity: number;
   unit_price_displayed: number;
+  unit_price_client_submitted?: number;
+  stock_quantity?: number;
 }
 
 export interface OrderSubmissionPayload {
   idempotency_key: string;
   submitted_at: string;
   source: string;
+  user_id?: string;
   customer: OrderCustomer;
   delivery: OrderDelivery;
   items: OrderItemSubmission[];
@@ -89,6 +97,7 @@ export interface WebhookResponse {
 export interface OrderRecord {
   id: string;
   order_ref: string;
+  user_id?: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string;

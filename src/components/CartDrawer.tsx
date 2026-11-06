@@ -20,6 +20,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     cartSubtotal,
     promoPreview,
     hasOverStockItems,
+    cartSyncError,
   } = useCart();
 
   if (!isOpen) return null;
@@ -52,6 +53,12 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           </button>
         </div>
 
+        {cartSyncError && (
+          <p role="alert" className="mx-4 mt-3 rounded-lg border border-rose-800/60 bg-rose-950/40 p-3 text-xs text-rose-200">
+            {cartSyncError}
+          </p>
+        )}
+
         {/* Over-stock global banner if applicable */}
         {hasOverStockItems && (
           <div className="mx-4 mt-4 p-3 rounded-xl bg-amber-950/40 border border-amber-600/30 flex items-start gap-2.5 text-xs text-amber-200">
@@ -59,7 +66,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <div>
               <p className="font-semibold text-amber-300">Stock Availability Notice</p>
               <p className="mt-0.5 text-amber-200/90 leading-relaxed">
-                One or more items in your cart exceed currently shelved stock. Your order can still be submitted, but will be marked for manual availability review.
+                Reduce quantities to current stock before checkout.
               </p>
             </div>
           </div>
@@ -122,7 +129,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {isOverStock && (
                         <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-300 font-medium">
                           <AlertTriangle className="w-3 h-3 text-amber-400" />
-                          <span>Qty ({quantity}) exceeds stock ({product.stock_quantity}) — review required</span>
+                          <span>Qty ({quantity}) exceeds available stock ({product.stock_quantity})</span>
                         </div>
                       )}
 
@@ -141,7 +148,8 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           </span>
                           <button
                             onClick={() => updateQuantity(product.id, quantity + 1)}
-                            className="p-1 text-slate-400 hover:text-white"
+                            disabled={quantity >= product.stock_quantity}
+                            className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                             aria-label="Increase quantity"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -215,14 +223,26 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
 
             {/* Checkout CTA */}
-            <Link
-              href="/checkout"
-              onClick={onClose}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20"
-            >
-              <span>Proceed to Checkout</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {hasOverStockItems ? (
+              <button
+                type="button"
+                disabled
+                title="Reduce quantities to current stock before checkout."
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-800 text-slate-500 font-bold text-sm cursor-not-allowed"
+              >
+                <span>Reduce quantities to continue</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <Link
+                href="/checkout"
+                onClick={onClose}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20"
+              >
+                <span>Proceed to Checkout</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            )}
           </div>
         )}
       </div>

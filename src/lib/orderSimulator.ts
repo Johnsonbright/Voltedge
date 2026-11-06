@@ -1,7 +1,7 @@
 import { OrderSubmissionPayload, WebhookResponse, OrderRecord } from '@/types';
-import { getProductById, SEED_PRODUCTS } from './products';
+import { getProductById } from './products';
 import { PROMO_THRESHOLD, PROMO_PERCENTAGE } from './formatters';
-import { getServiceSupabase } from './supabase';
+import { getServiceSupabase } from './supabaseAdmin';
 
 // In-memory cache for idempotency and orders fallback when Supabase isn't connected
 const processedOrders = new Map<string, { response: WebhookResponse; order: OrderRecord }>();
@@ -53,49 +53,42 @@ export async function processOrderLocally(
   // 2. Validate items and recalculate official prices (authoritative pricing)
   let computedTotal = 0;
   const reviewReasons: string[] = [];
-  const tags: string[] = ['STOREFRONT_WEB'];
-  let isOverStock = false;
+  const tags: string[] = ['STANDARD_ORDER', 'PAYMENT_PENDING'];
 
   const validatedItems = [];
 
   for (const item of items) {
-    // Find product from DB or seed
-    const officialProduct =
-      (await getProductById(item.product_id)) ||
-      SEED_PRODUCTS.find((p) => p.id === item.product_id || p.name === item.name);
+    const officialProduct = await getProductById(item.product_id);
+    if (!officialProduct) {
+      throw new Error(`Product "${item.product_id}" is no longer available.`);
+    }
 
-    const unitPrice = officialProduct ? officialProduct.price : item.unit_price_displayed;
-    const stockAvailable = officialProduct ? officialProduct.stock_quantity : 10;
+    const unitPrice = officialProduct.price;
+    const stockAvailable = officialProduct.stock_quantity;
+    if (item.quantity > stockAvailable) {
+      throw new Error(
+        `Requested quantity for "${officialProduct.name}" exceeds current stock (${stockAvailable}).`
+      );
+    }
     const subtotal = unitPrice * item.quantity;
     computedTotal += subtotal;
 
     // Price mismatch detection
-    if (Math.abs(unitPrice - item.unit_price_displayed) > 0.01) {
+    const clientSubmittedPrice = item.unit_price_client_submitted ?? item.unit_price_displayed;
+    if (Math.abs(unitPrice - clientSubmittedPrice) > 0.01) {
       reviewReasons.push(
-        `Price mismatch for "${item.name}": displayed ₦${item.unit_price_displayed}, authoritative ₦${unitPrice}`
+        `Price mismatch for "${officialProduct.name}": submitted ₦${clientSubmittedPrice}, authoritative ₦${unitPrice}`
       );
-      tags.push('PRICE_MISMATCH');
-    }
-
-    // Stock check
-    if (item.quantity > stockAvailable) {
-      isOverStock = true;
-      reviewReasons.push(
-        `Stock exceeded for "${item.name}": requested ${item.quantity}, currently shelved ${stockAvailable}`
-      );
+      tags.push('INCOMPLETE_ORDER');
     }
 
     validatedItems.push({
-      product_id: officialProduct ? officialProduct.id : null,
-      product_name: item.name,
+      product_id: officialProduct.id,
+      product_name: officialProduct.name,
       quantity: item.quantity,
       unit_price: unitPrice,
       subtotal,
     });
-  }
-
-  if (isOverStock) {
-    tags.push('OVER_STOCK', 'REVIEW_REQUIRED');
   }
 
   // 3. Compute High-Value Bonus (Promo Rule: ₦500,000 threshold -> 5% bonus credit)
@@ -104,7 +97,9 @@ export async function processOrderLocally(
   const bonusStatus = qualifiesForBonus ? 'PENDING_VERIFICATION' : 'NOT_ELIGIBLE';
 
   if (qualifiesForBonus) {
-    tags.push('HIGH_VALUE', 'PROMO_APPLIED');
+    const standardIndex = tags.indexOf('STANDARD_ORDER');
+    if (standardIndex >= 0) tags.splice(standardIndex, 1);
+    tags.push('HIGH_VALUE_ORDER');
   }
 
   // 4. Generate Order Reference
@@ -112,13 +107,11 @@ export async function processOrderLocally(
   const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
   const orderRef = `VE-${dateStr}-${randomSuffix}`;
 
-  const outcome = isOverStock ? 'ACCEPTED_FOR_REVIEW' : 'ACCEPTED';
-  const orderStatus = isOverStock ? 'UNDER_REVIEW' : 'PENDING';
-  const paymentStatus = 'UNPAID';
+  const outcome = 'ACCEPTED';
+  const orderStatus = 'PAYMENT_PENDING';
+  const paymentStatus = 'PAYMENT_PENDING';
 
-  const message = isOverStock
-    ? `Your order ${orderRef} has been accepted for availability review. Quantities exceed currently shelved stock. Payment verification is pending.`
-    : `Your order ${orderRef} has been successfully registered. Payment verification is pending. No charges have been debited.`;
+  const message = `Your order ${orderRef} has been successfully registered. Payment verification is pending. No charges have been debited.`;
 
   const webhookResponse: WebhookResponse = {
     success: true,
@@ -137,6 +130,7 @@ export async function processOrderLocally(
   const orderRecord: OrderRecord = {
     id: crypto.randomUUID(),
     order_ref: orderRef,
+    user_id: payload.user_id || null,
     customer_name: customer.name,
     customer_email: customer.email.toLowerCase().trim(),
     customer_phone: customer.phone,
@@ -154,7 +148,7 @@ export async function processOrderLocally(
     raw_payload: payload as unknown as Record<string, unknown>,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    order_items: validatedItems.map((vi, index) => ({
+    order_items: validatedItems.map((vi) => ({
       id: crypto.randomUUID(),
       ...vi,
     })),
@@ -173,6 +167,7 @@ export async function processOrderLocally(
         .from('orders')
         .insert({
           order_ref: orderRef,
+          user_id: payload.user_id || null,
           customer_name: customer.name,
           customer_email: customer.email.toLowerCase().trim(),
           customer_phone: customer.phone,

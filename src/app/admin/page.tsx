@@ -1,33 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  ShieldCheck,
-  Lock,
   Search,
-  Filter,
   Eye,
   X,
   AlertTriangle,
   Sparkles,
   RefreshCw,
-  LogOut,
-  ChevronRight,
-  Database,
-  Code,
   Check,
   Copy,
 } from 'lucide-react';
 import { OrderRecord } from '@/types';
 import { formatNaira, formatDate } from '@/lib/formatters';
+import { adminFetch } from '@/lib/adminClient';
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passcode, setPasscode] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
 
   // Filters
@@ -36,54 +27,34 @@ export default function AdminPage() {
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  // Auto-login if previously authenticated in sessionStorage
-  useEffect(() => {
-    const authState = sessionStorage.getItem('voltedge_admin_auth');
-    if (authState === 'true') {
-      setIsAuthenticated(true);
-      fetchOrders();
-    }
-  }, []);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-
-    // Accept demo passcode 'voltedge2026' or standard admin phrase
-    if (passcode.trim() === 'voltedge2026' || passcode.trim() === 'admin') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('voltedge_admin_auth', 'true');
-      fetchOrders();
-    } else {
-      setAuthError('Invalid administrator credentials. (Hint for evaluation: voltedge2026)');
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    sessionStorage.removeItem('voltedge_admin_auth');
-    setOrders([]);
-    setSelectedOrder(null);
-  };
-
-  const fetchOrders = async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/orders', {
-        headers: {
-          'x-admin-pass': 'voltedge2026',
-        },
-      });
+      const res = await adminFetch('/api/admin/orders');
       const data = await res.json();
-      if (data.success && Array.isArray(data.orders)) {
-        setOrders(data.orders);
+      if (!res.ok || !data.success || !Array.isArray(data.orders)) {
+        throw new Error(data.message || 'Failed to load orders.');
       }
-    } catch {
-      // Ignore
+      setOrders(data.orders);
+    } catch (error) {
+      setFetchError(error instanceof Error ? error.message : 'Failed to load orders.');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    // Load the protected order list after this page mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadOrders();
+  }, [loadOrders]);
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    setFetchError(null);
+    await loadOrders();
   };
 
   // Filtered orders list
@@ -109,7 +80,7 @@ export default function AdminPage() {
   const metrics = useMemo(() => {
     const totalCount = orders.length;
     const totalVolume = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-    const reviewCount = orders.filter((o) => o.order_status === 'UNDER_REVIEW').length;
+    const reviewCount = orders.filter((o) => ['UNDER_REVIEW', 'REVIEW_REQUIRED'].includes(o.order_status)).length;
     const promoCount = orders.filter((o) => Number(o.bonus_amount || 0) > 0).length;
 
     return { totalCount, totalVolume, reviewCount, promoCount };
@@ -121,63 +92,28 @@ export default function AdminPage() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="max-w-md mx-auto py-16 px-4">
-        <div className="glass-panel rounded-3xl p-8 border border-slate-800 shadow-2xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/10">
-            <ShieldCheck className="w-8 h-8" />
-          </div>
-
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              VoltEdge Admin Portal
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Read-only operations & demo audit records.
-            </p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4 text-left">
-            <div>
-              <label htmlFor="admin-passcode" className="block text-xs font-medium text-slate-300 mb-1.5">
-                Staff Access Passcode
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  id="admin-passcode"
-                  type="password"
-                  placeholder="Enter admin passcode"
-                  value={passcode}
-                  onChange={(e) => setPasscode(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-mono"
-                />
-              </div>
-            </div>
-
-            {authError && (
-              <p className="text-xs text-rose-400 bg-rose-950/40 p-2.5 rounded-lg border border-rose-800/60">
-                {authError}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full py-3 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all shadow-md shadow-cyan-500/20"
-            >
-              Sign In to Admin View
-            </button>
-
-            <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-              <span className="font-semibold text-slate-300">Demo Credentials Notice:</span>
-              <p>For immediate evaluation & test verification, enter passcode: <strong className="text-cyan-300 font-mono">voltedge2026</strong></p>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  const markPaymentVerified = async () => {
+    if (!selectedOrder) return;
+    setVerifyingPayment(true);
+    setFetchError(null);
+    setActionNotice(null);
+    try {
+      const response = await adminFetch('/api/admin/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ref: selectedOrder.order_ref }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Unable to verify payment.');
+      setSelectedOrder(data.order);
+      setOrders((current) => current.map((order) => order.id === data.order.id ? data.order : order));
+      setActionNotice(data.message);
+    } catch (actionError) {
+      setFetchError(actionError instanceof Error ? actionError.message : 'Unable to verify payment.');
+    } finally {
+      setVerifyingPayment(false);
+    }
+  };
 
   return (
     <div className="space-y-8 py-2">
@@ -205,15 +141,14 @@ export default function AdminPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/40 hover:text-rose-300 border border-slate-800 text-slate-400 text-xs font-semibold transition-all"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign Out
-          </button>
         </div>
       </div>
+
+      {fetchError && (
+        <p className="rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+          {fetchError}
+        </p>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -270,8 +205,10 @@ export default function AdminPage() {
             className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
           >
             <option value="ALL">All Order Statuses</option>
-            <option value="PENDING">PENDING</option>
-            <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+            <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
+            <option value="REVIEW_REQUIRED">REVIEW_REQUIRED</option>
+            <option value="PENDING">PENDING (legacy)</option>
+            <option value="UNDER_REVIEW">UNDER_REVIEW (legacy)</option>
             <option value="CONFIRMED">CONFIRMED</option>
             <option value="CANCELLED">CANCELLED</option>
           </select>
@@ -283,8 +220,8 @@ export default function AdminPage() {
             className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
           >
             <option value="ALL">All Payment Statuses</option>
-            <option value="UNPAID">UNPAID (Pending Verification)</option>
-            <option value="VERIFIED">VERIFIED</option>
+            <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
+            <option value="PAYMENT_CONFIRMED">PAYMENT_CONFIRMED</option>
           </select>
 
           {/* Tag Filter */}
@@ -294,10 +231,11 @@ export default function AdminPage() {
             className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 font-mono"
           >
             <option value="ALL">All Tags</option>
-            <option value="HIGH_VALUE">#HIGH_VALUE</option>
-            <option value="OVER_STOCK">#OVER_STOCK</option>
+            <option value="HIGH_VALUE_ORDER">#HIGH_VALUE_ORDER</option>
+            <option value="STANDARD_ORDER">#STANDARD_ORDER</option>
+            <option value="INCOMPLETE_ORDER">#INCOMPLETE_ORDER</option>
             <option value="REVIEW_REQUIRED">#REVIEW_REQUIRED</option>
-            <option value="PROMO_APPLIED">#PROMO_APPLIED</option>
+            <option value="PAYMENT_CONFIRMED">#PAYMENT_CONFIRMED</option>
           </select>
         </div>
       </div>
@@ -327,7 +265,7 @@ export default function AdminPage() {
                 </tr>
               ) : (
                 filteredOrders.map((ord) => {
-                  const isReview = ord.order_status === 'UNDER_REVIEW';
+                  const isReview = ord.order_status === 'UNDER_REVIEW' || ord.order_status === 'REVIEW_REQUIRED';
                   const hasBonus = Number(ord.bonus_amount || 0) > 0;
                   return (
                     <tr
@@ -454,10 +392,21 @@ export default function AdminPage() {
                 <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
                   <span className="text-slate-400 block font-medium">Payment Status</span>
                   <span className="font-bold text-amber-300 text-sm">
-                    {selectedOrder.payment_status} (Pending Verification)
+                    {selectedOrder.payment_status}
                   </span>
                 </div>
               </div>
+              {actionNotice && <p role="status" className="rounded-xl border border-emerald-800/60 bg-emerald-950/40 p-3 text-xs text-emerald-200">{actionNotice}</p>}
+              {selectedOrder.payment_status !== 'PAYMENT_CONFIRMED' && selectedOrder.payment_status !== 'VERIFIED' && (
+                <button
+                  type="button"
+                  onClick={() => void markPaymentVerified()}
+                  disabled={verifyingPayment}
+                  className="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  {verifyingPayment ? 'Saving verification...' : 'Mark payment verified'}
+                </button>
+              )}
 
               {/* Customer Information */}
               <div className="glass-panel rounded-xl p-4 border border-slate-800 text-xs space-y-2">
@@ -524,7 +473,7 @@ export default function AdminPage() {
                 <span className="text-slate-400 font-medium block">Store Credit Bonus Evaluation:</span>
                 <p className="text-cyan-300 font-mono font-bold">
                   {Number(selectedOrder.bonus_amount || 0) > 0
-                    ? `+${formatNaira(selectedOrder.bonus_amount)} (Status: ${selectedOrder.bonus_status})`
+                    ? `+${formatNaira(selectedOrder.bonus_amount)} (Status: ${selectedOrder.bonus_status === 'ACTIVATED' ? 'PENDING WORKFLOW' : selectedOrder.bonus_status})`
                     : 'Not Eligible'}
                 </p>
                 <p className="text-[11px] text-slate-400">
@@ -564,7 +513,7 @@ export default function AdminPage() {
                 <span className="font-semibold text-slate-300 block mb-1">
                   Database & System Architecture
                 </span>
-                The storefront web application never mutates or directly updates orders. All order state transitions and payment confirmations are executed exclusively by n8n using the Supabase Service Role key.
+                Order data is written by the server-side n8n integration. Authorized admins can mark payment verified here; bonus crediting remains a separate workflow action.
               </div>
             </div>
           </div>

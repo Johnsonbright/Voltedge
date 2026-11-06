@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -14,13 +14,23 @@ import {
   RefreshCw,
   ShoppingBag,
   Info,
+  LogIn,
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { formatNaira, isValidNigerianPhone } from '@/lib/formatters';
 import { WebhookResponse, OrderSubmissionPayload } from '@/types';
+import { useAuth } from '@/context/AuthContext';
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const {
+    user,
+    profile,
+    accessToken,
+    loading: authLoading,
+    authError,
+    signInWithGoogle,
+  } = useAuth();
   const {
     items,
     cartSubtotal,
@@ -47,19 +57,44 @@ export default function CheckoutPage() {
   const [serverError, setServerError] = useState<{ message: string; retryable?: boolean } | null>(
     null
   );
+  const [signInError, setSignInError] = useState<string | null>(null);
+  const [isStartingSignIn, setIsStartingSignIn] = useState(false);
 
-  // Initialize or restore idempotency key on mount
+  // Initialize or restore idempotency key on mount.
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     let key = sessionStorage.getItem('voltedge_checkout_idempotency_key');
     if (!key) {
       key = crypto.randomUUID();
       sessionStorage.setItem('voltedge_checkout_idempotency_key', key);
     }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIdempotencyKey(key);
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const metadata = user.user_metadata || {};
+    const fullName =
+      profile?.name ||
+      metadata.full_name ||
+      metadata.name ||
+      [metadata.given_name, metadata.family_name].filter(Boolean).join(' ');
+    // Prefill after the signed-in profile arrives; keep any customer edits.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setName((current) => current || fullName || '');
+    setEmail((current) => current || profile?.email || user.email || '');
+    setPhone((current) => current || profile?.phone || metadata.phone || '');
+  }, [profile, user]);
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+
+    if (!user) {
+      newErrors.auth = 'Sign in before submitting an order.';
+    }
 
     if (!name.trim() || name.trim().length < 2) {
       newErrors.name = 'Full name is required (minimum 2 characters)';
@@ -79,6 +114,9 @@ export default function CheckoutPage() {
     if (items.length === 0) {
       newErrors.cart = 'Your cart is empty. Add products before checking out.';
     }
+    if (hasOverStockItems) {
+      newErrors.cart = 'Reduce quantities to current stock before submitting.';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -89,6 +127,17 @@ export default function CheckoutPage() {
     if (isSubmitting) return; // Prevent double-clicks
 
     setServerError(null);
+    if (!user) {
+      setServerError({ message: 'Sign in before submitting an order.', retryable: false });
+      return;
+    }
+    if (hasOverStockItems) {
+      setServerError({
+        message: 'One or more quantities exceed current stock. Reduce them before submitting.',
+        retryable: false,
+      });
+      return;
+    }
 
     if (!validateForm()) {
       return;
@@ -118,10 +167,13 @@ export default function CheckoutPage() {
     };
 
     try {
+      const token = await accessToken();
+      if (!token) throw new Error('Your sign-in session has expired. Sign in again before checking out.');
       const response = await fetch('/api/orders/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -161,10 +213,11 @@ export default function CheckoutPage() {
 
       // Navigate to order outcome page
       router.push(`/order/result?ref=${encodeURIComponent(webhookResponse.order_ref)}`);
-    } catch {
+    } catch (error) {
       setServerError({
-        message:
-          'Network connection interrupted or service timed out. Your cart is preserved. Please click retry to submit again.',
+        message: error instanceof Error
+          ? error.message
+          : 'Network connection interrupted or service timed out. Your cart is preserved. Please click retry to submit again.',
         retryable: true,
       });
       setIsSubmitting(false);
@@ -176,6 +229,59 @@ export default function CheckoutPage() {
       <div className="py-24 text-center">
         <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
         <p className="text-sm text-slate-400">Loading your checkout session...</p>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="py-24 text-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
+        <p className="text-sm text-slate-400">Checking your sign-in status...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    const handleSignIn = async () => {
+      setSignInError(null);
+      setIsStartingSignIn(true);
+      try {
+        await signInWithGoogle('/checkout');
+      } catch (error) {
+        setSignInError(error instanceof Error ? error.message : 'Unable to start Google sign-in.');
+        setIsStartingSignIn(false);
+      }
+    };
+
+    return (
+      <div className="max-w-xl mx-auto py-16 px-4 text-center space-y-5">
+        <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-cyan-400">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl font-bold text-white">Sign in to continue</h1>
+        <p className="text-sm text-slate-400">
+          Checkout is available to signed-in customers. Your cart will be kept while you sign in.
+        </p>
+        {(signInError || authError) && (
+          <p role="alert" className="rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+            {signInError || authError}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => void handleSignIn()}
+          disabled={isStartingSignIn}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isStartingSignIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+          {isStartingSignIn ? 'Opening Google sign-in...' : 'Sign in with Google'}
+        </button>
+        <div>
+          <Link href="/" className="text-xs text-slate-400 hover:text-white">
+            Continue browsing
+          </Link>
+        </div>
       </div>
     );
   }
@@ -394,7 +500,7 @@ export default function CheckoutPage() {
                       <strong>{overStockItems.map((i) => `${i.product.name} (requested ${i.quantity}, shelf ${i.product.stock_quantity})`).join(', ')}</strong>.
                     </p>
                     <p className="mt-1 text-amber-300/90">
-                      Your order will be accepted for <em>availability review</em> rather than blocked. No payment will be debited until warehouse replenishment is verified.
+                      Reduce each quantity to the available stock before continuing. Checkout is disabled until your cart is within stock.
                     </p>
                   </div>
                 </div>
@@ -411,10 +517,10 @@ export default function CheckoutPage() {
             <button
               id="submit-order-button"
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || hasOverStockItems}
               className={`w-full py-4 px-6 rounded-2xl font-bold text-base flex items-center justify-center gap-2.5 transition-all shadow-xl ${
-                isSubmitting
-                  ? 'bg-slate-800 text-slate-400 cursor-wait'
+                isSubmitting || hasOverStockItems
+                  ? `bg-slate-800 text-slate-400 ${isSubmitting ? 'cursor-wait' : 'cursor-not-allowed'}`
                   : 'bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-cyan-500/20 active:scale-98'
               }`}
             >
@@ -426,7 +532,7 @@ export default function CheckoutPage() {
               ) : (
                 <>
                   <ShieldCheck className="w-5 h-5" />
-                  <span>Submit Order Request • {formatNaira(cartSubtotal)}</span>
+                  <span>{hasOverStockItems ? 'Reduce quantities to continue' : `Submit Order Request • ${formatNaira(cartSubtotal)}`}</span>
                 </>
               )}
             </button>
@@ -480,7 +586,7 @@ export default function CheckoutPage() {
                       {isOver && (
                         <p className="text-[10px] text-amber-400 flex items-center gap-1 mt-0.5">
                           <AlertTriangle className="w-3 h-3" />
-                          Subject to availability review (shelf: {product.stock_quantity})
+                          Exceeds available stock (max: {product.stock_quantity})
                         </p>
                       )}
                     </div>

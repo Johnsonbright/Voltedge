@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findOrderForTracking } from '@/lib/orderSimulator';
+import { requireOptionalAuthenticatedUser } from '@/lib/adminAuth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +21,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const order = await findOrderForTracking(order_ref, email);
+    const auth = await requireOptionalAuthenticatedUser();
+    if (!auth.authorized) return auth.response;
+
+    let order;
+    if (auth.user) {
+      if (!auth.database) {
+        return NextResponse.json(
+          { success: false, message: 'Server-side order access is not configured.' },
+          { status: 503 }
+        );
+      }
+      const { data, error } = await auth.database
+        .from('orders')
+        .select('*, order_items (*)')
+        .eq('order_ref', order_ref.trim().toUpperCase())
+        .maybeSingle();
+      if (error) {
+        return NextResponse.json(
+          { success: false, message: 'Unable to query your order status.' },
+          { status: 500 }
+        );
+      }
+      if (
+        data &&
+        (data.user_id === auth.user.id ||
+          (data.user_id === null &&
+            data.customer_email.toLowerCase() === (auth.user.email || '').toLowerCase()))
+      ) {
+        order = data;
+      } else {
+        order = null;
+      }
+    } else {
+      order = await findOrderForTracking(order_ref, email);
+    }
 
     if (!order) {
       return NextResponse.json(
@@ -47,7 +82,6 @@ export async function POST(req: NextRequest) {
       bonus_status: order.bonus_status,
       payment_status: order.payment_status,
       order_status: order.order_status,
-      tags: order.tags,
       review_reasons: order.review_reasons,
       created_at: order.created_at,
       order_items: order.order_items || [],

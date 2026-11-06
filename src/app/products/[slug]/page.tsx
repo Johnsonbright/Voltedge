@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ChevronRight, ArrowLeft, Shield, Zap, Truck, RotateCcw } from 'lucide-react';
+import { ChevronRight, ArrowLeft, Shield, Zap, RotateCcw } from 'lucide-react';
 import { getProductBySlug, getProducts } from '@/lib/products';
 import { formatNaira } from '@/lib/formatters';
 import ProductDetailActions from '@/components/ProductDetailActions';

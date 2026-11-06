@@ -94,19 +94,16 @@ export const SEED_PRODUCTS: Product[] = [
 
 export async function getProducts(): Promise<Product[]> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('price', { ascending: false });
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_active', true)
+      .order('price', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        return data as Product[];
-      }
-    } catch {
-      // Fallback to seed catalog if remote database query fails
+    if (error) {
+      throw new Error(`Unable to load the live product catalogue: ${error.message}`);
     }
+    return (data || []) as Product[];
   }
 
   return SEED_PRODUCTS;
@@ -114,20 +111,17 @@ export async function getProducts(): Promise<Product[]> {
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('slug', slug)
-        .eq('is_active', true)
-        .single();
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle();
 
-      if (!error && data) {
-        return data as Product;
-      }
-    } catch {
-      // Fallback to local catalog
+    if (error) {
+      throw new Error(`Unable to load product from Supabase: ${error.message}`);
     }
+    return data as Product | null;
   }
 
   return SEED_PRODUCTS.find((p) => p.slug === slug) || null;
@@ -135,19 +129,17 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
 
 export async function getProductById(id: string): Promise<Product | null> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', id)
-        .single();
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-      if (!error && data) {
-        return data as Product;
-      }
-    } catch {
-      // Fallback to local catalog
+    if (error) {
+      throw new Error(`Unable to load product from Supabase: ${error.message}`);
     }
+    return data as Product | null;
   }
 
   return SEED_PRODUCTS.find((p) => p.id === id) || null;

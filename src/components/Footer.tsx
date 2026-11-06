@@ -45,11 +45,6 @@ export default function Footer() {
                   Track Existing Order
                 </Link>
               </li>
-              <li>
-                <Link href="/admin" className="hover:text-cyan-400 transition-colors">
-                  Staff Admin Portal
-                </Link>
-              </li>
             </ul>
           </div>
 

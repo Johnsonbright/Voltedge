@@ -11,23 +11,29 @@ interface ProductDetailActionsProps {
 }
 
 export default function ProductDetailActions({ product }: ProductDetailActionsProps) {
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [justAdded, setJustAdded] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const isOutOfStock = product.stock_quantity <= 0;
-  const isOverStock = quantity > product.stock_quantity;
+  const cartQuantity = items.find((item) => item.product.id === product.id)?.quantity || 0;
+  const availableToAdd = Math.max(0, product.stock_quantity - cartQuantity);
+  const isOverStock = quantity > availableToAdd;
   const lineTotal = product.price * quantity;
   const qualifiesForPromo = lineTotal >= PROMO_THRESHOLD;
   const bonusPreview = qualifiesForPromo ? Math.round(lineTotal * PROMO_PERCENTAGE) : 0;
 
-  const handleIncrement = () => setQuantity((q) => q + 1);
+  const handleIncrement = () => setQuantity((q) => Math.max(1, Math.min(availableToAdd, q + 1)));
   const handleDecrement = () => setQuantity((q) => Math.max(1, q - 1));
 
   const handleAddToCart = () => {
-    if (isOutOfStock) return;
+    if (isOutOfStock || isOverStock) return;
     const result = addItem(product, quantity);
+    if (!result.success) {
+      setToastMessage(result.message || 'This quantity is unavailable.');
+      return;
+    }
     setJustAdded(true);
     if (result.message) {
       setToastMessage(result.message);
@@ -58,9 +64,9 @@ export default function ProductDetailActions({ product }: ProductDetailActionsPr
         <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-600/50 text-amber-200 text-xs flex items-start gap-3">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-amber-300">Subject to Availability Review</p>
+            <p className="font-semibold text-amber-300">Available Stock Limit Reached</p>
             <p className="mt-0.5 text-amber-200/90 leading-relaxed">
-              Requested quantity ({quantity}) exceeds currently verified shelf stock ({product.stock_quantity}). You may still place the order; it will be flagged for manual inventory review rather than blocked.
+              Your cart already contains {cartQuantity} unit(s). Adding {quantity} more would exceed available stock ({product.stock_quantity}); reduce the cart quantity before adding more.
             </p>
           </div>
         </div>
@@ -95,7 +101,8 @@ export default function ProductDetailActions({ product }: ProductDetailActionsPr
             </span>
             <button
               onClick={handleIncrement}
-              className="p-2 text-slate-400 hover:text-white transition-colors"
+              disabled={quantity >= availableToAdd}
+              className="p-2 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Increase quantity"
             >
               <Plus className="w-4 h-4" />
@@ -106,9 +113,9 @@ export default function ProductDetailActions({ product }: ProductDetailActionsPr
         {/* Add to Cart Button */}
         <button
           onClick={handleAddToCart}
-          disabled={isOutOfStock}
+          disabled={isOutOfStock || isOverStock}
           className={`flex-1 py-3.5 px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-            isOutOfStock
+            isOutOfStock || isOverStock
               ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/40'
               : justAdded
               ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
@@ -117,6 +124,8 @@ export default function ProductDetailActions({ product }: ProductDetailActionsPr
         >
           {isOutOfStock ? (
             <span>Unavailable (Out of Stock)</span>
+          ) : isOverStock ? (
+            <span>Requested quantity exceeds available stock</span>
           ) : justAdded ? (
             <>
               <Check className="w-4 h-4" />

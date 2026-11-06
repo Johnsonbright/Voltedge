@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   CheckCircle2,
@@ -11,43 +11,45 @@ import {
   Check,
   ShieldCheck,
   Sparkles,
-  ArrowRight,
   Search,
   Info,
   FileQuestion,
-  HelpCircle,
 } from 'lucide-react';
 import { WebhookResponse } from '@/types';
 import { formatNaira } from '@/lib/formatters';
 
 function OrderResultContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const refParam = searchParams.get('ref');
 
-  const [result, setResult] = useState<WebhookResponse | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [customerEmail, setCustomerEmail] = useState<string>('');
+  const [result] = useState<WebhookResponse | null>(() => {
+    if (typeof window === 'undefined') return null;
 
-  useEffect(() => {
-    // 1. Retrieve cached webhook response from sessionStorage
     try {
       const stored = sessionStorage.getItem('voltedge_last_order_result');
-      if (stored) {
-        const parsed = JSON.parse(stored) as WebhookResponse;
-        if (!refParam || parsed.order_ref === refParam) {
-          setResult(parsed);
-        }
+      if (!stored) return null;
+      const parsed = JSON.parse(stored) as WebhookResponse;
+      if (refParam && parsed.order_ref !== refParam) {
+        return null;
       }
-      const customerStored = sessionStorage.getItem('voltedge_last_order_customer');
-      if (customerStored) {
-        const parsedCust = JSON.parse(customerStored);
-        setCustomerEmail(parsedCust.email || '');
-      }
+      return parsed;
     } catch {
-      // Ignore parse errors
+      return null;
     }
-  }, [refParam]);
+  });
+  const [copied, setCopied] = useState(false);
+  const [customerEmail] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+
+    try {
+      const customerStored = sessionStorage.getItem('voltedge_last_order_customer');
+      if (!customerStored) return '';
+      const parsedCust = JSON.parse(customerStored);
+      return parsedCust.email || '';
+    } catch {
+      return '';
+    }
+  });
 
   const copyOrderRef = () => {
     if (!result?.order_ref) return;
@@ -85,7 +87,7 @@ function OrderResultContent() {
     );
   }
 
-  const { outcome, order_ref, total, bonus_amount, bonus_status, tags, message, review_reasons } =
+  const { outcome, order_ref, total, bonus_amount, message, review_reasons } =
     result;
 
   const isAccepted = outcome === 'ACCEPTED';
@@ -219,7 +221,9 @@ function OrderResultContent() {
           <div className="py-2.5 flex justify-between items-center text-slate-400">
             <span>Payment Status</span>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-300 border border-amber-800">
-              {result.payment_status} (Pending Verification)
+              {result.payment_status === 'PAYMENT_CONFIRMED' || result.payment_status === 'VERIFIED'
+                ? result.payment_status
+                : `${result.payment_status} (Pending Verification)`}
             </span>
           </div>
 
@@ -249,7 +253,7 @@ function OrderResultContent() {
                   <>
                     Estimated bonus:{' '}
                     <strong className="text-cyan-300 font-mono">+{formatNaira(bonus_amount)}</strong>{' '}
-                    (<span className="underline italic text-cyan-300">pending until payment is verified</span>)
+                    (<span className="underline italic text-cyan-300">not activated; subject to payment verification and workflow processing</span>)
                   </>
                 ) : (
                   'Cart total was below ₦500,000 threshold'
@@ -259,31 +263,18 @@ function OrderResultContent() {
             <div>
               <span
                 className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                  bonus_status === 'PENDING_VERIFICATION'
+                  bonus_amount > 0
                     ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
                     : 'bg-slate-800 text-slate-400 border-slate-700'
                 }`}
               >
-                {bonus_status === 'PENDING_VERIFICATION' ? 'PENDING VERIFICATION' : 'NOT ELIGIBLE'}
+                {bonus_amount > 0 ? 'PENDING WORKFLOW' : 'NOT ELIGIBLE'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Tags */}
-        {tags && tags.length > 0 && (
-          <div className="pt-3 border-t border-slate-800 flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-slate-400">Intake Tags:</span>
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Next Steps Action Bar */}

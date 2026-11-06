@@ -1,26 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   Search,
   Loader2,
   AlertCircle,
   ShieldCheck,
-  Clock,
-  CheckCircle2,
   Sparkles,
-  PackageCheck,
-  FileQuestion,
-  HelpCircle,
   Copy,
   Check,
 } from 'lucide-react';
 import { OrderRecord } from '@/types';
 import { formatNaira, formatDate } from '@/lib/formatters';
+import { useAuth } from '@/context/AuthContext';
 
 function TrackOrderContent() {
+  const { user, loading: authLoading, accessToken } = useAuth();
   const searchParams = useSearchParams();
   const initialRef = searchParams.get('ref') || '';
   const initialEmail = searchParams.get('email') || '';
@@ -30,16 +26,14 @@ function TrackOrderContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderRecord | null>(null);
+  const [accountOrders, setAccountOrders] = useState<OrderRecord[]>([]);
+  const [accountOrdersLoading, setAccountOrdersLoading] = useState(true);
+  const [accountOrdersUserId, setAccountOrdersUserId] = useState<string | null>(null);
+  const [accountOrdersError, setAccountOrdersError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const autoLookupTriggered = useRef(false);
 
-  // Auto-fetch if both ref and email are present in query params
-  useEffect(() => {
-    if (initialRef && initialEmail) {
-      handleLookup(initialRef, initialEmail);
-    }
-  }, [initialRef, initialEmail]);
-
-  const handleLookup = async (refToQuery: string, emailToQuery: string) => {
+  const handleLookup = useCallback(async (refToQuery: string, emailToQuery: string) => {
     const trimmedRef = refToQuery.trim();
     const trimmedEmail = emailToQuery.trim().toLowerCase();
 
@@ -57,10 +51,12 @@ function TrackOrderContent() {
     setOrder(null);
 
     try {
+      const token = await accessToken();
       const res = await fetch('/api/orders/track', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           order_ref: trimmedRef,
@@ -80,7 +76,43 @@ function TrackOrderContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!authLoading && !user && initialRef && initialEmail && !autoLookupTriggered.current) {
+      autoLookupTriggered.current = true;
+      void handleLookup(initialRef, initialEmail);
+    }
+  }, [authLoading, handleLookup, initialRef, initialEmail, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void (async () => {
+      const token = await accessToken();
+      if (!token) throw new Error('Your sign-in session has expired. Sign in again to view your orders.');
+      setAccountOrdersLoading(true);
+      setAccountOrdersError(null);
+      const response = await fetch('/api/orders/mine', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Unable to load your orders.');
+      if (active) {
+        setAccountOrders(data.orders);
+        setAccountOrdersUserId(user.id);
+      }
+    })()
+      .catch((loadError: unknown) => {
+        if (active) setAccountOrdersError(loadError instanceof Error ? loadError.message : 'Unable to load your orders.');
+      })
+      .finally(() => {
+        if (active) setAccountOrdersLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, user]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +124,50 @@ function TrackOrderContent() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (authLoading) {
+    return <p className="py-16 text-center text-sm text-slate-400">Checking your account...</p>;
+  }
+
+  if (user) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6 py-4">
+        <header className="text-center space-y-2">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">Your Orders</h1>
+          <p className="text-sm text-slate-400">Showing orders linked to your signed-in account only.</p>
+        </header>
+        {accountOrdersError && <p role="alert" className="rounded-xl border border-rose-800/60 bg-rose-950/40 p-3 text-sm text-rose-200">{accountOrdersError}</p>}
+        {accountOrdersLoading && accountOrdersUserId !== user.id ? <p className="text-center text-sm text-slate-400">Loading your orders...</p> : accountOrdersUserId !== user.id ? null : accountOrders.length === 0 ? (
+          <div className="glass-panel rounded-2xl border border-slate-800 p-6 text-center text-sm text-slate-400">No orders are linked to your account yet.</div>
+        ) : (
+          <div className="space-y-3">
+            {accountOrders.map((accountOrder) => (
+              <article key={accountOrder.id} className="glass-panel rounded-2xl border border-slate-800 p-5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div>
+                    <p className="font-mono font-bold text-cyan-300">{accountOrder.order_ref}</p>
+                    <p className="mt-1 text-xs text-slate-400">{formatDate(accountOrder.created_at)}</p>
+                  </div>
+                  <span className="w-fit rounded-full border border-amber-800 bg-amber-950 px-2.5 py-1 text-[10px] font-mono text-amber-300">{accountOrder.payment_status}</span>
+                </div>
+                <div className="flex flex-wrap justify-between gap-3 text-sm">
+                  <span className="text-slate-300">{accountOrder.order_items?.map((item) => `${item.product_name} × ${item.quantity}`).join(', ') || 'Order received'}</span>
+                  <strong className="text-white">{formatNaira(accountOrder.total)}</strong>
+                </div>
+                {accountOrder.delivery_address && <p className="text-xs text-slate-400">Delivery: {accountOrder.delivery_address}</p>}
+                <p className="text-xs text-slate-500">
+                  {accountOrder.payment_status === 'PAYMENT_CONFIRMED' || accountOrder.payment_status === 'VERIFIED'
+                    ? 'Payment verified.'
+                    : 'No payment has been verified; no charge is implied.'}
+                  {Number(accountOrder.bonus_amount) > 0 && ' Any eligible bonus remains pending verification and workflow processing.'}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 py-4">
@@ -207,16 +283,16 @@ function TrackOrderContent() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                      order.order_status === 'CONFIRMED'
+                      order.order_status === 'PAYMENT_CONFIRMED' || order.order_status === 'CONFIRMED'
                         ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                        : order.order_status === 'UNDER_REVIEW'
+                        : order.order_status === 'UNDER_REVIEW' || order.order_status === 'REVIEW_REQUIRED'
                         ? 'bg-amber-950 text-amber-300 border-amber-800'
                         : 'bg-slate-800 text-slate-300 border-slate-700'
                     }`}
                   >
                     {order.order_status}
                   </span>
-                  {order.order_status === 'UNDER_REVIEW' && (
+                  {(order.order_status === 'UNDER_REVIEW' || order.order_status === 'REVIEW_REQUIRED') && (
                     <span className="text-[11px] text-amber-300/80">Pending Stock Review</span>
                   )}
                 </div>
@@ -229,7 +305,7 @@ function TrackOrderContent() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                      order.payment_status === 'VERIFIED'
+                      order.payment_status === 'VERIFIED' || order.payment_status === 'PAYMENT_CONFIRMED'
                         ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
                         : 'bg-amber-950 text-amber-300 border-amber-800'
                     }`}
@@ -237,7 +313,9 @@ function TrackOrderContent() {
                     {order.payment_status}
                   </span>
                   <span className="text-[11px] text-amber-300/90 font-medium">
-                    (Pending Verification)
+                    {order.payment_status === 'VERIFIED' || order.payment_status === 'PAYMENT_CONFIRMED'
+                      ? '(Verified)'
+                      : '(Pending Verification)'}
                   </span>
                 </div>
               </div>
@@ -250,7 +328,9 @@ function TrackOrderContent() {
                 <span>Verification Policy</span>
               </div>
               <p>
-                Payment is pending until verified. Delivery dates are not promised or scheduled at order submission time. Warehouse fulfillment initiates once verified payment is confirmed.
+                {order.payment_status === 'VERIFIED' || order.payment_status === 'PAYMENT_CONFIRMED'
+                  ? 'Payment has been verified. Order processing and any eligible bonus remain subject to the applicable workflow. Delivery dates are not promised until confirmed.'
+                  : 'Payment is pending until verified; no payment is implied by order submission. Delivery dates are not promised or scheduled at order submission time.'}
               </p>
             </div>
 
@@ -303,11 +383,11 @@ function TrackOrderContent() {
                 <p className="text-[11px] text-slate-400">
                   {Number(order.bonus_amount) > 0 ? (
                     <>
-                      Amount:{' '}
+                      Estimated amount:{' '}
                       <strong className="text-cyan-300 font-mono">
                         +{formatNaira(order.bonus_amount)}
                       </strong>{' '}
-                      (<span className="italic underline text-cyan-300">pending until payment is verified</span>)
+                      (<span className="italic underline text-cyan-300">not activated; subject to payment verification and workflow processing</span>)
                     </>
                   ) : (
                     'Not eligible (below ₦500,000 threshold)'
@@ -315,7 +395,7 @@ function TrackOrderContent() {
                 </p>
               </div>
               <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                {order.bonus_status}
+                {Number(order.bonus_amount) > 0 ? 'PENDING WORKFLOW' : 'NOT ELIGIBLE'}
               </span>
             </div>
 

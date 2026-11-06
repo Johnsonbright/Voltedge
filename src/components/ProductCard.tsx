@@ -13,18 +13,24 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const [justAdded, setJustAdded] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const isOutOfStock = product.stock_quantity <= 0;
+  const cartQuantity = items.find((item) => item.product.id === product.id)?.quantity || 0;
+  const isAtStockLimit = cartQuantity >= product.stock_quantity;
   const isLowStock = product.stock_quantity > 0 && product.stock_quantity <= 3;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (isOutOfStock) return;
+    if (isOutOfStock || isAtStockLimit) return;
 
     const result = addItem(product, 1);
+    if (!result.success) {
+      setFeedback(result.message || 'This quantity is unavailable.');
+      return;
+    }
     setJustAdded(true);
     if (result.message) {
       setFeedback(result.message);
@@ -105,18 +111,20 @@ export default function ProductCard({ product }: ProductCardProps) {
 
         <button
           onClick={handleAddToCart}
-          disabled={isOutOfStock}
+          disabled={isOutOfStock || isAtStockLimit}
           className={`px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all ${
-            isOutOfStock
+            isOutOfStock || isAtStockLimit
               ? 'bg-slate-800/60 text-slate-400 border border-slate-700/50 cursor-not-allowed'
               : justAdded
               ? 'bg-emerald-500 text-slate-950 font-bold'
               : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-md shadow-cyan-500/20 active:scale-95'
           }`}
-          aria-label={isOutOfStock ? `${product.name} is out of stock` : `Add ${product.name} to cart`}
+          aria-label={isOutOfStock ? `${product.name} is out of stock` : isAtStockLimit ? `${product.name} has reached its stock limit in your cart` : `Add ${product.name} to cart`}
         >
           {isOutOfStock ? (
             <span>Sold Out</span>
+          ) : isAtStockLimit ? (
+            <span>Stock Limit Reached</span>
           ) : justAdded ? (
             <>
               <Check className="w-3.5 h-3.5" />
