@@ -7,7 +7,6 @@ type IntegrationForm = {
   webhook_url: string;
   test_webhook_url: string;
   environment: 'test' | 'production';
-  mock_enabled: boolean;
   webhook_secret: string;
   clear_secret: boolean;
 };
@@ -16,7 +15,6 @@ const emptyForm: IntegrationForm = {
   webhook_url: '',
   test_webhook_url: '',
   environment: 'test',
-  mock_enabled: false,
   webhook_secret: '',
   clear_secret: false,
 };
@@ -43,7 +41,6 @@ export default function AdminIntegrationsPage() {
           webhook_url: data.settings.webhook_url || '',
           test_webhook_url: data.settings.test_webhook_url || '',
           environment: data.settings.environment,
-          mock_enabled: data.settings.mock_enabled,
         });
         setSecretConfigured(data.settings.secret_configured);
         setSettingsSource(data.settings.source);
@@ -137,15 +134,11 @@ export default function AdminIntegrationsPage() {
                 Remove the saved secret
               </label>
             )}
-            <label className="flex items-start gap-3 rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-sm text-amber-100">
-              <input type="checkbox" checked={form.mock_enabled} onChange={(e) => setForm({ ...form, mock_enabled: e.target.checked })} className="mt-1" />
-              <span><strong>Use local mock mode.</strong> When enabled, checkout submissions do not reach n8n.</span>
-            </label>
             <div className="flex flex-wrap gap-3">
               <button type="submit" disabled={saving} className="rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 px-4 py-2.5 text-sm font-bold text-slate-950">
                 {saving ? 'Saving...' : 'Save settings'}
               </button>
-              <button type="button" onClick={() => void testConnection()} disabled={testing || saving || form.mock_enabled} className="rounded-lg border border-slate-700 hover:bg-slate-900 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-slate-200">
+              <button type="button" onClick={() => void testConnection()} disabled={testing || saving} className="rounded-lg border border-slate-700 hover:bg-slate-900 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-slate-200">
                 {testing ? 'Testing...' : 'Send connection test'}
               </button>
             </div>
@@ -156,7 +149,7 @@ export default function AdminIntegrationsPage() {
       <aside className="rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4 text-xs text-amber-100/90 space-y-2">
         <h2 className="font-semibold text-amber-200">Before sending a test event</h2>
         <p>In n8n, add a branch for <code>event = connection_test</code> and stop that branch before any order calculation, Supabase order insert, email, or internal notification. The test button sends this event to the selected webhook.</p>
-        <p>For production, activate the n8n workflow, choose Production, confirm the production URL, and turn off mock mode. Always keep payment status pending until a trusted payment verification step confirms payment.</p>
+        <p>For production, activate the n8n workflow and choose Production after confirming the production URL. Always keep payment status pending until a trusted payment verification step confirms payment.</p>
       </aside>
     </div>
   );

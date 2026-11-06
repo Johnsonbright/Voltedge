@@ -5,7 +5,6 @@ export interface WebhookSettings {
   testWebhookUrl: string;
   environment: 'test' | 'production';
   secret: string;
-  mockEnabled: boolean;
   source: 'database' | 'environment';
 }
 
@@ -16,7 +15,6 @@ export async function getWebhookSettings(): Promise<WebhookSettings> {
     environment:
       process.env.N8N_ENVIRONMENT?.toLowerCase() === 'production' ? 'production' : 'test',
     secret: process.env.N8N_WEBHOOK_SECRET || '',
-    mockEnabled: process.env.ENABLE_MOCK_WEBHOOK === 'true',
     source: 'environment',
   };
 
@@ -25,7 +23,7 @@ export async function getWebhookSettings(): Promise<WebhookSettings> {
 
   const { data, error } = await database
     .from('integration_settings')
-    .select('webhook_url, test_webhook_url, environment, webhook_secret, mock_enabled')
+    .select('webhook_url, test_webhook_url, environment, webhook_secret')
     .eq('id', 1)
     .maybeSingle();
 
@@ -39,7 +37,6 @@ export async function getWebhookSettings(): Promise<WebhookSettings> {
     testWebhookUrl: data.test_webhook_url || fallbackSettings.testWebhookUrl,
     environment: data.environment || fallbackSettings.environment,
     secret: data.webhook_secret || fallbackSettings.secret,
-    mockEnabled: data.mock_enabled ?? fallbackSettings.mockEnabled,
     source: 'database',
   };
 }

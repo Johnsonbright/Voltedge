@@ -26,7 +26,6 @@ const settingsSchema = z.object({
   webhook_url: z.string().trim().refine(isAllowedWebhookUrl, 'Use an HTTPS webhook URL on a public hostname.'),
   test_webhook_url: z.string().trim().refine(isAllowedWebhookUrl, 'Use an HTTPS webhook URL on a public hostname.'),
   environment: z.enum(['test', 'production']),
-  mock_enabled: z.boolean(),
   webhook_secret: z.string().max(500).optional(),
   clear_secret: z.boolean().optional(),
 });
@@ -43,7 +42,6 @@ export async function GET() {
         webhook_url: settings.webhookUrl,
         test_webhook_url: settings.testWebhookUrl,
         environment: settings.environment,
-        mock_enabled: settings.mockEnabled,
         secret_configured: Boolean(settings.secret),
         source: settings.source,
       },
@@ -100,7 +98,6 @@ export async function PUT(req: NextRequest) {
     webhook_url: parsed.data.webhook_url || null,
     test_webhook_url: parsed.data.test_webhook_url || null,
     environment: parsed.data.environment,
-    mock_enabled: parsed.data.mock_enabled,
     webhook_secret: secret,
   });
 
@@ -121,7 +118,7 @@ export async function POST() {
   try {
     const { data, error } = await access.database
       .from('integration_settings')
-      .select('webhook_url, test_webhook_url, environment, webhook_secret, mock_enabled')
+      .select('webhook_url, test_webhook_url, environment, webhook_secret')
       .eq('id', 1)
       .maybeSingle();
 
@@ -142,13 +139,6 @@ export async function POST() {
         { status: 400 }
       );
     }
-    if (data.mock_enabled) {
-      return NextResponse.json(
-        { success: false, message: 'Turn off mock mode before testing the n8n webhook.' },
-        { status: 400 }
-      );
-    }
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {

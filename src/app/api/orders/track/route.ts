@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findOrderForTracking } from '@/lib/orderSimulator';
 import { requireOptionalAuthenticatedUser } from '@/lib/adminAuth';
 
 export async function POST(req: NextRequest) {
@@ -24,40 +23,32 @@ export async function POST(req: NextRequest) {
     const auth = await requireOptionalAuthenticatedUser();
     if (!auth.authorized) return auth.response;
 
-    let order;
-    if (auth.user) {
-      if (!auth.database) {
-        return NextResponse.json(
-          { success: false, message: 'Server-side order access is not configured.' },
-          { status: 503 }
-        );
-      }
-      const { data, error } = await auth.database
-        .from('orders')
-        .select('*, order_items (*)')
-        .eq('order_ref', order_ref.trim().toUpperCase())
-        .maybeSingle();
-      if (error) {
-        return NextResponse.json(
-          { success: false, message: 'Unable to query your order status.' },
-          { status: 500 }
-        );
-      }
-      if (
-        data &&
-        (data.user_id === auth.user.id ||
-          (data.user_id === null &&
-            data.customer_email.toLowerCase() === (auth.user.email || '').toLowerCase()))
-      ) {
-        order = data;
-      } else {
-        order = null;
-      }
-    } else {
-      order = await findOrderForTracking(order_ref, email);
+    if (!auth.database) {
+      return NextResponse.json(
+        { success: false, message: 'Server-side order access is not configured.' },
+        { status: 503 }
+      );
     }
 
-    if (!order) {
+    const { data: order, error } = await auth.database
+      .from('orders')
+      .select('*, order_items (*)')
+      .eq('order_ref', order_ref.trim().toUpperCase())
+      .maybeSingle();
+    if (error) {
+      return NextResponse.json(
+        { success: false, message: 'Unable to query order status.' },
+        { status: 500 }
+      );
+    }
+
+    const orderMatchesCustomer = order && (auth.user
+      ? order.user_id === auth.user.id ||
+        (order.user_id === null &&
+          order.customer_email.toLowerCase() === (auth.user.email || '').toLowerCase())
+      : order.customer_email.toLowerCase() === email.trim().toLowerCase());
+
+    if (!orderMatchesCustomer) {
       return NextResponse.json(
         {
           success: false,

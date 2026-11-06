@@ -11,8 +11,9 @@ Copy `.env.example` to `.env.local` and set:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only Supabase service-role key. Never prefix this with `NEXT_PUBLIC_` or expose it in the browser.
 - `SUPER_ADMIN_EMAIL` — email address that becomes the first super admin after its first Google sign-in. Only the first profile can be bootstrapped this way.
 - `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_TEST_URL`, `N8N_WEBHOOK_SECRET`, and `N8N_ENVIRONMENT` — n8n endpoints and the separate shared secret used only for the n8n integration.
-- `ENABLE_MOCK_WEBHOOK` — use `true` for local mock orders; set to `false` when testing the n8n workflow or in production.
 - `NEXT_PUBLIC_SITE_URL` — site origin, such as `http://localhost:3000`.
+
+Order submission requires a configured n8n webhook. If none is available, the API returns an unavailable error and does not create an order.
 
 There is no admin password or admin API secret. Admin access comes from a signed-in Supabase user whose server-side `profiles.role` is `admin` or `super_admin`. Google sign-in exchanges its authorization code for a Supabase SSR cookie session; the Next.js `src/proxy.ts` refreshes sessions, while server layouts and API routes validate the cookie and read the current database role. Profile synchronization runs during the OAuth callback, not on each navigation.
 Customers must sign in with Google before checkout or order submission. Add `http://localhost:3000/auth/callback` and your deployed `/auth/callback` URL to the Supabase Auth redirect URL allowlist. Existing sessions held only in the previous localStorage session require one fresh sign-in after deploying this change.
@@ -146,5 +147,3 @@ npm run dev
 npm run build
 npm run lint
 ```
-
-`scripts/verify-scenarios.mjs` targets `http://localhost:3005`; start the dev server with `npm run dev -- --hostname 0.0.0.0 --port 3005` before running it.

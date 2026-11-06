@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { n8nWebhookReplySchema, orderSubmissionPayloadSchema } from '@/lib/validations';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { processOrderLocally } from '@/lib/orderSimulator';
 import { WebhookResponse } from '@/types';
 import { getActiveWebhookUrl, getWebhookSettings, type WebhookSettings } from '@/lib/webhookSettings';
 import { getProductById } from '@/lib/products';
@@ -138,35 +137,26 @@ export async function POST(req: NextRequest) {
 
   const webhookUrl = getActiveWebhookUrl(webhookSettings);
   const webhookSecret = webhookSettings.secret;
-  const enableMock =
-    webhookSettings.mockEnabled ||
-    !webhookUrl ||
-    webhookUrl.includes('your-n8n-instance');
-
-  // 4. If mock simulation is active (dev mode or before user connects remote n8n)
-  if (enableMock) {
-    try {
-      const simulatedResponse = await processOrderLocally(payload);
-      return NextResponse.json(simulatedResponse, { status: 200 });
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown simulation error';
-      return NextResponse.json(
-        {
-          success: false,
-          outcome: 'REJECTED_INCOMPLETE',
-          message: 'Error processing order locally in mock mode.',
-          errors: [errorMsg],
-        },
-        { status: 500 }
-      );
-    }
+  if (!webhookUrl || webhookUrl.includes('your-n8n-instance')) {
+    return NextResponse.json(
+      {
+        success: false,
+        outcome: null,
+        error_code: 'N8N_NOT_CONFIGURED',
+        message: 'Order submission is unavailable because the n8n webhook is not configured. Please try again later.',
+        errors: ['Configure an n8n webhook URL before accepting orders.'],
+        retryable: false,
+        idempotency_key: payload.idempotency_key,
+      },
+      { status: 503 }
+    );
   }
 
-  // 5. Production Forwarding to n8n Webhook
+  // Forward the validated order to the configured n8n webhook.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 12000); // 12-second abort timeout
   try {
-    const upstreamResponse = await fetch(webhookUrl!, {
+    const upstreamResponse = await fetch(webhookUrl, {
       method: 'POST',
       redirect: 'manual',
       headers: {
